@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from src import database as db
 from pydantic import BaseModel
 from typing import List
@@ -38,9 +38,76 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     The endpoint returns the id of the resulting conversation that was created.
     """
 
-    # TODO: Remove the following two lines. This is just a placeholder to show
-    # how you could implement persistent storage.
+    # # TODO: Remove the following two lines. This is just a placeholder to show
+    # # how you could implement persistent storage.
 
-    print(conversation)
-    db.logs.append({"post_call_time": datetime.now(), "movie_id_added_to": movie_id})
-    db.upload_new_log()
+    # print(conversation)
+    # db.logs.append({"post_call_time": datetime.now(), "movie_id_added_to": movie_id})
+    # db.upload_new_log()
+
+
+
+    # movie exists check
+    movie = db.get_movie(movie_id)
+    if movie is None:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    # characters are in the movie check
+    for character_id in [conversation.character_1_id, conversation.character_2_id]:
+        if not any(character_id == character.id for character in movie.characters):
+            raise HTTPException(status_code=404, detail=f"Character(s) not found in movie.")
+
+    # characters are different check
+    if conversation.character_1_id == conversation.character_2_id:
+        raise HTTPException(status_code=404, detail="Characters must be different")
+    
+    # lines match the character check
+    for line in conversation.lines:
+        if line.character_id not in [conversation.character_1_id, conversation.character_2_id]:
+            raise HTTPException(status_code=404, detail=f"Line {line.line_text} does not match characters in conversation.")
+        
+
+    # add conversation
+    new_conversation_id = len(db.conversations)
+    new_conversation = {
+        "id": new_conversation_id,
+        "movie_id": movie_id,
+        "character_1_id": conversation.character_1_id,
+        "character_2_id": conversation.character_2_id,
+    }
+    db.conversations.append(new_conversation)
+    db.upload_new_conversation()
+
+    # add/sort lines
+    line_sort = 1
+    for l in conversation.lines:
+
+        next_line_id = int(db.char_lines[len(db.char_lines)-1]["line_id"]) + 1
+
+        db.char_lines.append({"line_id": next_line_id,
+                        "character_id": l.character_id,
+                        "movie_id": movie_id,
+                        "conversation_id": new_conversation_id,
+                        "line_sort": line_sort,
+                        "line_text": l.line_text
+                        })
+        line_sort += 1
+    
+    db.upload_new_lines()
+    
+    # Return the ID of the resulting conversation
+    return {"id": new_conversation_id}
+
+
+# Edge cases the code does not work well in:
+#
+# - The function uses a list to store the conversations the code which may not 
+# work well when there are multiple simultaneous calls to the function becuase
+# it can lead to race conditions where two or more requests try to modify the 
+# same data structure at the same time, which can result in unpredictable behavior
+# and data corruption.
+#
+# - There is no check for duplicate conversations, so two identical conversations
+# could be created with different IDs.
+#
+# - If the request body is too large the it might consume too much memory or crash.
