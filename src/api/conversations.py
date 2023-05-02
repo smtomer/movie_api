@@ -3,7 +3,7 @@ from src import database as db
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
-
+import sqlalchemy as sq
 
 # FastAPI is inferring what the request body should look like
 # based on the following two classes.
@@ -46,57 +46,96 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     # db.upload_new_log()
 
 
+    c1_id = conversation.character_1_id
+    c2_id = conversation.character_2_id
 
-    # movie exists check
-    movie = db.get_movie(movie_id)
-    if movie is None:
-        raise HTTPException(status_code=404, detail="Movie not found.")
+    c1_stmt = (sq.select(db.characters.c.character_id, db.movies.c.movie_id)
+               .select_from(db.characters.join(db.movies, db.characters.c.movie_id == db.movies.c.movie_id))
+               .where(db.characters.c.character_id == c1_id))
+    with db.engine.connect() as conn: result = conn.execute(c1_stmt)
 
-    # characters are in the movie check
-    for character_id in [conversation.character_1_id, conversation.character_2_id]:
-        if not any(character_id == character.id for character in movie.characters):
-            raise HTTPException(status_code=404, detail=f"Character(s) not found in movie.")
+    c1 = result.first()
 
-    # characters are different check
-    if conversation.character_1_id == conversation.character_2_id:
+    if c1 is None:
+        raise HTTPException(status_code=404, detail=f"Character not found.")
+    
+    if c1.movie_id != movie_id:
+        raise HTTPException(status_code=404, detail=f"Character not found in movie.")
+
+    c2_stmt = (sq.select(db.characters.c.character_id, db.movies.c.movie_id)
+               .select_from(db.characters.join(db.movies, db.characters.c.movie_id == db.movies.c.movie_id))
+               .where(db.characters.c.character_id == c2_id))
+    with db.engine.connect() as conn: result = conn.execute(c2_stmt)
+
+    c2 = result.first()
+
+    if c2 is None:
+        raise HTTPException(status_code=404, detail=f"Character not found.")
+    
+    if c2.movie_id != movie_id:
+        raise HTTPException(status_code=404, detail=f"Character not found in movie.")
+
+
+    if c1.character_id == c2.character_id:
         raise HTTPException(status_code=404, detail="Characters must be different")
     
-    # lines match the character check
     for line in conversation.lines:
-        if line.character_id not in [conversation.character_1_id, conversation.character_2_id]:
-            raise HTTPException(status_code=404, detail=f"Line {line.line_text} does not match characters in conversation.")
+        if line.character_id != c1.character_id and line.character_id != c2.character_id:
+            raise HTTPException(status_code=404, detail=f"Character(s) not found in movie.")
+
+
+    stmt = (sq.select(db.conversations.c.c))
+
+    # # movie exists check
+    # movie = db.get_movie(movie_id)
+    # if movie is None:
+    #     raise HTTPException(status_code=404, detail="Movie not found.")
+
+    # # characters are in the movie check
+    # for character_id in [conversation.character_1_id, conversation.character_2_id]:
+    #     if not any(character_id == character.id for character in movie.characters):
+    #         raise HTTPException(status_code=404, detail=f"Character(s) not found in movie.")
+
+    # # characters are different check
+    # if conversation.character_1_id == conversation.character_2_id:
+    #     raise HTTPException(status_code=404, detail="Characters must be different")
+    
+    # # lines match the character check
+    # for line in conversation.lines:
+    #     if line.character_id not in [conversation.character_1_id, conversation.character_2_id]:
+    #         raise HTTPException(status_code=404, detail=f"Line {line.line_text} does not match characters in conversation.")
         
 
-    # add conversation
-    new_conversation_id = len(db.conversations)
-    new_conversation = {
-        "id": new_conversation_id,
-        "movie_id": movie_id,
-        "character_1_id": conversation.character_1_id,
-        "character_2_id": conversation.character_2_id,
-    }
-    db.conversations.append(new_conversation)
-    db.upload_new_conversation()
+    # # add conversation
+    # new_conversation_id = len(db.conversations)
+    # new_conversation = {
+    #     "id": new_conversation_id,
+    #     "movie_id": movie_id,
+    #     "character_1_id": conversation.character_1_id,
+    #     "character_2_id": conversation.character_2_id,
+    # }
+    # db.conversations.append(new_conversation)
+    # db.upload_new_conversation()
 
-    # add/sort lines
-    line_sort = 1
-    for l in conversation.lines:
+    # # add/sort lines
+    # line_sort = 1
+    # for l in conversation.lines:
 
-        next_line_id = int(db.char_lines[len(db.char_lines)-1]["line_id"]) + 1
+    #     next_line_id = int(db.char_lines[len(db.char_lines)-1]["line_id"]) + 1
 
-        db.char_lines.append({"line_id": next_line_id,
-                        "character_id": l.character_id,
-                        "movie_id": movie_id,
-                        "conversation_id": new_conversation_id,
-                        "line_sort": line_sort,
-                        "line_text": l.line_text
-                        })
-        line_sort += 1
+    #     db.char_lines.append({"line_id": next_line_id,
+    #                     "character_id": l.character_id,
+    #                     "movie_id": movie_id,
+    #                     "conversation_id": new_conversation_id,
+    #                     "line_sort": line_sort,
+    #                     "line_text": l.line_text
+    #                     })
+    #     line_sort += 1
     
-    db.upload_new_lines()
+    # db.upload_new_lines()
     
-    # Return the ID of the resulting conversation
-    return {"id": new_conversation_id}
+    # # Return the ID of the resulting conversation
+    # return {"id": new_conversation_id}
 
 
 # Edge cases the code does not work well in:

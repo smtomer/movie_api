@@ -4,7 +4,7 @@ from collections import Counter
 
 from fastapi.params import Query
 from src import database as db
-
+import sqlalchemy as sq
 router = APIRouter()
 
 
@@ -106,35 +106,71 @@ def list_characters(
     number of results to skip before returning results.
     """
 
-    if name:
-
-        def filter_fn(c):
-            return c.name and name.upper() in c.name
-
+    if sort is character_sort_options.character:
+        order_by = db.characters.c.name
+    elif sort is character_sort_options.movie:
+        order_by = db.movies.c.title
+    elif sort is character_sort_options.number_of_lines:
+        order_by = sq.desc("number_of_lines")
     else:
+        assert False
 
-        def filter_fn(_):
-            return True
+    stmt = (sq.select(db.characters.c.character_id, db.characters.c.name, 
+                      db.movies.c.title, sq.func.count(db.lines.c.line_id).label("number_of_lines"))
+                      .select_from(db.characters
+                                   .join(db.movies, db.characters.c.movie_id == db.movies.c.movie_id)
+                                   .join(db.lines, db.characters.c.character_id == db.lines.c.character_id))
+                                   .group_by(db.characters.c.character_id, db.movies.c.title)
+                                   .limit(limit)
+                                   .offset(offset)
+                                   .order_by(order_by, db.characters.c.character_id))
 
-    items = list(filter(filter_fn, db.characters.values()))
-
-    def none_last(x, reverse=False):
-        return (x is None) ^ reverse, x
-
-    if sort == character_sort_options.character:
-        items.sort(key=lambda c: none_last(c.name))
-    elif sort == character_sort_options.movie:
-        items.sort(key=lambda c: none_last(db.movies[c.movie_id].title))
-    elif sort == character_sort_options.number_of_lines:
-        items.sort(key=lambda c: none_last(c.num_lines, True), reverse=True)
-
-    json = (
-        {
-            "character_id": c.id,
-            "character": c.name,
-            "movie": db.movies[c.movie_id].title,
-            "number_of_lines": c.num_lines,
-        }
-        for c in items[offset : offset + limit]
-    )
+    if name != "":
+        stmt = stmt.where(db.characters.c.name.ilike(f"%{name}%"))
+    
+    with db.engine.connect() as conn:
+        result = conn.execute(stmt)
+        json = []
+        for row in result:
+            json.append(
+                {
+                   "character_id": row.character_id,
+                   "character": row.name,
+                   "movie": row.title,
+                   "number_of_lines": row.number_of_lines 
+                })
+    
     return json
+    
+    # if name:
+
+    #     def filter_fn(c):
+    #         return c.name and name.upper() in c.name
+
+    # else:
+
+    #     def filter_fn(_):
+    #         return True
+
+    # items = list(filter(filter_fn, db.characters.values()))
+
+    # def none_last(x, reverse=False):
+    #     return (x is None) ^ reverse, x
+
+    # if sort == character_sort_options.character:
+    #     items.sort(key=lambda c: none_last(c.name))
+    # elif sort == character_sort_options.movie:
+    #     items.sort(key=lambda c: none_last(db.movies[c.movie_id].title))
+    # elif sort == character_sort_options.number_of_lines:
+    #     items.sort(key=lambda c: none_last(c.num_lines, True), reverse=True)
+
+    # json = (
+    #     {
+    #         "character_id": c.id,
+    #         "character": c.name,
+    #         "movie": db.movies[c.movie_id].title,
+    #         "number_of_lines": c.num_lines,
+    #     }
+    #     for c in items[offset : offset + limit]
+    # )
+    # return json

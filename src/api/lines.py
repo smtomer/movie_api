@@ -41,7 +41,9 @@ def get_conversation_lines(conversation_id: int):
     conversation = db.conversations.get(conversation_id)
 
     if conversation:
+        # lines = [db.lines.get(line_id) for line_id in conversation.line_ids]
         lines = [db.lines.get(line_id) for line_id in conversation.line_ids]
+
         lines.sort(key=lambda line: line.line_sort)
         result = [{"character_name": db.characters[line.character_id].name, "line_text": line.line_text} for line in lines]
         return result
