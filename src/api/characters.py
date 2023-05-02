@@ -8,21 +8,21 @@ import sqlalchemy as sq
 router = APIRouter()
 
 
-def get_top_conv_characters(character):
-    c_id = character.id
-    movie_id = character.movie_id
-    all_convs = filter(
-        lambda conv: conv.movie_id == movie_id
-        and (conv.c1_id == c_id or conv.c2_id == c_id),
-        db.conversations.values(),
-    )
-    line_counts = Counter()
+# def get_top_conv_characters(character):
+#     c_id = character.id
+#     movie_id = character.movie_id
+#     all_convs = filter(
+#         lambda conv: conv.movie_id == movie_id
+#         and (conv.c1_id == c_id or conv.c2_id == c_id),
+#         db.conversations.values(),
+#     )
+#     line_counts = Counter()
 
-    for conv in all_convs:
-        other_id = conv.c2_id if conv.c1_id == c_id else conv.c1_id
-        line_counts[other_id] += conv.num_lines
+#     for conv in all_convs:
+#         other_id = conv.c2_id if conv.c1_id == c_id else conv.c1_id
+#         line_counts[other_id] += conv.num_lines
 
-    return line_counts.most_common()
+#     return line_counts.most_common()
 
 
 @router.get("/characters/{id}", tags=["characters"])
@@ -47,28 +47,70 @@ def get_character(id: int):
       originally queried character.
     """
 
-    character = db.characters.get(id)
+    stmt = (sq.select(db.characters.c.character_id, db.characters.c.name, 
+                       db.movies.c.title, db.characters.c.gender,)
+                       .where(db.characters.c.character_id == id)
+                       .join(db.movies, db.characters.c.movie_id == db.movies.c.movie_id))
 
-    if character:
-        movie = db.movies.get(character.movie_id)
-        result = {
-            "character_id": character.id,
-            "character": character.name,
-            "movie": movie and movie.title,
-            "gender": character.gender,
-            "top_conversations": (
-                {
-                    "character_id": other_id,
-                    "character": db.characters[other_id].name,
-                    "gender": db.characters[other_id].gender,
-                    "number_of_lines_together": lines,
-                }
-                for other_id, lines in get_top_conv_characters(character)
-            ),
+    with db.engine.connect() as conn:
+        result = conn.execute(stmt)
+        row = result.first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="character not found.")
+        character = {
+            "character_id": row.character_id,
+            "character": row.name,
+            "movie": row.title,
+            "gender": row.gender,
         }
-        return result
 
-    raise HTTPException(status_code=404, detail="character not found.")
+    stmt = (sq.select(db.characters.c.character_id, db.characters.c.name, db.characters.c.gender, 
+                      sq.func.count(db.lines.c.character_id).label("number_of_lines_together"),)
+                      .where((db.lines.c.character_id == id) & ((db.conversations.c.character1_id == id) | (db.conversations.c.character2_id == id)))
+                      .join(db.lines, db.lines.c.conversation_id == db.conversations.c.conversation_id)
+                      .join(db.characters, db.characters.c.character_id == db.conversations.c.character2_id)
+                      .group_by(db.characters.c.character_id)
+                      .order_by(sq.desc("number_of_lines_together")))
+    
+    with db.engine.connect() as conn:
+        result = conn.execute(stmt)
+        top_conversations = []
+        for row in result:
+            top_conversations.append(
+                {
+                    "character_id": row.character_id,
+                    "character": row.name,
+                    "gender": row.gender,
+                    "number_of_lines_together": row.number_of_lines_together,
+                }
+            )
+
+    character["top_conversations"] = top_conversations
+    
+    return character
+
+    # character = db.characters.get(id)
+
+    # if character:
+    #     movie = db.movies.get(character.movie_id)
+    #     result = {
+    #         "character_id": character.id,
+    #         "character": character.name,
+    #         "movie": movie and movie.title,
+    #         "gender": character.gender,
+    #         "top_conversations": (
+    #             {
+    #                 "character_id": other_id,
+    #                 "character": db.characters[other_id].name,
+    #                 "gender": db.characters[other_id].gender,
+    #                 "number_of_lines_together": lines,
+    #             }
+    #             for other_id, lines in get_top_conv_characters(character)
+    #         ),
+    #     }
+    #     return result
+
+    # raise HTTPException(status_code=404, detail="character not found.")
 
 
 class character_sort_options(str, Enum):

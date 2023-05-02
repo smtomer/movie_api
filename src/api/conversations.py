@@ -49,10 +49,12 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     c1_id = conversation.character_1_id
     c2_id = conversation.character_2_id
 
-    c1_stmt = (sq.select(db.characters.c.character_id, db.movies.c.movie_id)
+    stmt = (sq.select(db.characters.c.character_id, db.movies.c.movie_id)
                .select_from(db.characters.join(db.movies, db.characters.c.movie_id == db.movies.c.movie_id))
                .where(db.characters.c.character_id == c1_id))
-    with db.engine.connect() as conn: result = conn.execute(c1_stmt)
+   
+    with db.engine.connect() as conn: 
+        result = conn.execute(stmt)
 
     c1 = result.first()
 
@@ -62,10 +64,12 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     if c1.movie_id != movie_id:
         raise HTTPException(status_code=404, detail=f"Character not found in movie.")
 
-    c2_stmt = (sq.select(db.characters.c.character_id, db.movies.c.movie_id)
+    stmt = (sq.select(db.characters.c.character_id, db.movies.c.movie_id)
                .select_from(db.characters.join(db.movies, db.characters.c.movie_id == db.movies.c.movie_id))
                .where(db.characters.c.character_id == c2_id))
-    with db.engine.connect() as conn: result = conn.execute(c2_stmt)
+    
+    with db.engine.connect() as conn: 
+        result = conn.execute(stmt)
 
     c2 = result.first()
 

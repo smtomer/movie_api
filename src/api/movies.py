@@ -22,13 +22,12 @@ def get_movie(movie_id: int):
     * `num_lines`: The number of lines the character has in the movie.
 
     """
-    movie_stmt = (sq.select(db.movies.c.movie_id, db.movies.c.title)
-                  .where(db.movies.c.movie_id == movie_id)
-                  .limit(1))
+    stmt = (sq.select(db.movies.c.movie_id, db.movies.c.title)
+                  .where(db.movies.c.movie_id == movie_id))
     
     with db.engine.connect() as conn:
-        resultm = conn.execute(movie_stmt)
-        movie_row = resultm.fetchone()
+        result = conn.execute(stmt)
+        movie_row = result.first()
         if movie_row is None:
             raise HTTPException(status_code=404, detail="movie not found.")
         json = {
@@ -36,7 +35,7 @@ def get_movie(movie_id: int):
             "title": movie_row.title,
         }
 
-    top_characters_stmt = (
+    stmt = (
         sq.select(db.characters.c.character_id, db.characters.c.name, sq.func.count(db.lines.c.line_text).label("num_lines"),)
         .select_from(db.lines.join(db.characters))
         .where(db.movies.c.movie_id == movie_id)
@@ -45,9 +44,9 @@ def get_movie(movie_id: int):
         .limit(5))
     
     with db.engine.connect() as conn:
-        resultc = conn.execute(top_characters_stmt)
+        result = conn.execute(stmt)
         characters = []
-        for row in resultc:
+        for row in result:
             characters.append(
                 {
                     "character_id": row.character_id,
