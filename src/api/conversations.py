@@ -88,8 +88,58 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
             raise HTTPException(status_code=404, detail=f"Character(s) not found in movie.")
 
 
-    stmt = (sq.select(db.conversations.c.c))
+    last_conv = (sq.select(db.conversations.c.conversation_id).order_by(sq.desc(db.conversations.c.conversation_id)).limit(1))
+    last_line = (sq.select(db.lines.c.line_id).order_by(sq.desc(db.lines.c.line_id)).limit(1))
 
+    with db.engine.begin() as conn:
+        conv_id = conn.execute(last_conv)
+        
+        for id in conv_id:
+            new_conv_id = id.conversation_id + 1
+
+        new_conv = (db.conversations.insert().values(
+            conversation_id = conv_id,
+            character1_id = c1_id,
+            character2_id = c2_id,
+            movie_id = movie_id
+        ))
+
+        conn.execute(new_conv, [{"conv_id": new_conv_id,
+                                 "c1_id": conversation.character_1_id,
+                                 "c2_id": conversation.character_2_id,
+                                 "movie_id": movie_id
+                                 }]
+        )
+
+        line_id = conn.execute(last_line)
+
+        for id in line_id:
+            new_line_id = id.line_id + 1
+
+        line_sort = 1
+
+        for line in conversation.lines:
+            new_line =  (db.lines.insert().values(
+                line_id = line_id,
+                character_id = line.character_id,
+                movie_id = movie_id,
+                conversation_id = new_conv_id,
+                line_sort = line_sort,
+                line_text = line.line_text
+            ))
+            conn.execute(new_line,[{"line_id": new_line_id, 
+                                    "character_id": line.character_id,
+                                    "movie_id": movie_id,
+                                    "conversation_id": new_conv_id,
+                                    "line_sort": line_sort,
+                                    "line_text": line.line_text
+                                    }]
+            )
+
+            new_line_id += 1
+            line_sort += 1
+
+    
     # # movie exists check
     # movie = db.get_movie(movie_id)
     # if movie is None:

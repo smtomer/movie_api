@@ -16,7 +16,8 @@ engine = sq.create_engine(database_connection_url())
 conn = engine.connect()
 
 metadata_obj = sq.MetaData()
-movies = sq.Table("Movies", metadata_obj, autoload_with=engine)
-characters = sq.Table("Characters", metadata_obj, autoload_with=engine)
-conversations = sq.Table("Conversations", metadata_obj, autoload_with=engine)
-lines = sq.Table("Lines", metadata_obj, autoload_with=engine)
+
+movies = sq.Table("movies", metadata_obj, autoload_with=engine)
+characters = sq.Table("characters", metadata_obj, autoload_with=engine)
+lines = sq.Table("lines", metadata_obj, autoload_with=engine)
+conversations = sq.Table("conversations", metadata_obj, autoload_with=engine)
